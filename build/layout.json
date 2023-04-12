@@ -1,0 +1,10 @@
+{
+    "bootloader": "bin/stage_one.bin",
+    "files": [
+        {
+            "name": "stagetwo",
+            "extension": "b16",
+            "path": "bin/stage_two.bin"
+        }
+    ]
+}
