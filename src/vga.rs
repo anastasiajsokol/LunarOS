@@ -27,10 +27,10 @@ pub enum Color {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct ColorCode(u8);
+pub struct ColorCode(u8);
 
 impl ColorCode {
-    fn new(foreground: Color, background: Color) -> ColorCode {
+    pub fn new(foreground: Color, background: Color) -> ColorCode {
         ColorCode((background as u8) << 4 | (foreground as u8))
     }
 }
@@ -61,7 +61,12 @@ impl Writer {
     pub fn cwrite(&mut self, character: u8){
         match character {
             b'\n' => self.newline(),
-
+            b'\t' => {
+                self.column_position += 4;
+                if self.column_position >= BUFFER_WIDTH {
+                    self.newline();
+                }
+            },
             character => {
                 if self.column_position >= BUFFER_WIDTH {
                     self.newline();
@@ -84,7 +89,7 @@ impl Writer {
         for character in string.bytes() {
             match character {
                 // printable ASCII byte or newline
-                0x20..=0x7e | b'\n' => self.cwrite(character),
+                0x20..=0x7e | b'\n' | b'\t' => self.cwrite(character),
                 
                 // not part of printable ASCII range
                 _ => self.cwrite(0xfe),
@@ -115,6 +120,10 @@ impl Writer {
         }
         self.column_position = 0;
     }
+
+    pub fn set_color(&mut self, color: ColorCode){
+        self.color_code = color;
+    }
 }
 
 impl fmt::Write for Writer {
@@ -125,10 +134,12 @@ impl fmt::Write for Writer {
 }
 
 lazy_static! {
+    pub static ref DEFAULT_COLOR: ColorCode = ColorCode::new(Color::White, Color::Black);
+
     pub static ref WRITER: Mutex<Writer> = Mutex::new( Writer {
         column_position: 0,
         row_position: 0,
-        color_code: ColorCode::new(Color::White, Color::Black),
+        color_code: *DEFAULT_COLOR,
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
     });
 }
@@ -144,8 +155,27 @@ macro_rules! println {
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
 
+#[macro_export]
+macro_rules! cprint {
+    ($color:expr, $($arg:tt)*) => ($crate::vga::_cprint($color, format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! cprintln {
+    () => ($crate::print!("\n"));
+    ($color:expr, $($arg:tt)*) => ($crate::cprint!($color, "{}\n", format_args!($($arg)*)));
+}
+
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
+}
+
+#[doc(hidden)]
+pub fn _cprint(color: ColorCode, args: fmt::Arguments) {
+    use core::fmt::Write;
+    WRITER.lock().set_color(color);
+    WRITER.lock().write_fmt(args).unwrap();
+    WRITER.lock().set_color(*DEFAULT_COLOR);
 }
